@@ -1,0 +1,27 @@
+{
+  "mqttConnect": {
+    "url": "mqtt://127.0.0.1",
+    "username": "mqtt",
+    "password": "password",
+    "topicRoot": "Service Check"
+  },
+
+  "services": [
+    {
+      "name": "SSH",
+      "host": "127.0.0.1",
+      "protocol": "tcp",
+      "port": 22
+    },
+    {
+      "name": "Web",
+      "host": "127.0.0.1",
+      "protocol": "http"
+    },
+    {
+      "name": "DNS",
+      "host": "localhost",
+      "protocol": "dns"
+    }
+  ]
+}
