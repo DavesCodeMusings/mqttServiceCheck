@@ -1,58 +1,81 @@
 #!/usr/bin/env node
 
-// Set to true for console logging.
-const debug = false;
-
+const fs = require('fs');
 const net = require('net');
 const dns = require('dns');
 const http = require('http');
 const https = require('https');
 const mqtt = require('mqtt');
 
-// ON and OFF matches the specification for Home Assistant MQTT Binary Sensors.
-const statusMsg = {
-  'success': 'ON',
-  'failure': 'OFF'
-}
-
-const mqttServer = {
-  'url': 'mqtt://uno.home',
-  'username': 'username',
-  'password': 'password',
-  'topicRoot': 'Network Monitor'
-};
-
-const services = [
-  { 'name': 'SSH', 'host': '127.0.0.1', 'protocol': 'tcp', 'port': 22 },
-  { 'name': 'Nginx', 'host': '127.0.0.1', 'protocol': 'http' },
-  { 'name': 'Portainer', 'host': '127.0.0.1', 'protocol': 'http', 'port': 9000 },
-  { 'name': 'DNS', 'host': 'localhost', 'protocol': 'dns' },
-  { 'name': 'Router', 'host': '127.0.0.1', 'protocol': 'http' }
-];
-
+var debug = false;
+var configFile = 'config.json';
+var config = { };
 const timeout = 2500;
 
+/*
+* readCommandLine - process parameters passed when starting the program.
+*/
+function readCommandLine() {
+  // argv[0] is 'node'. argv[1] is the name of this program. argv[2] is the start of options.
+  if (process.argv.indexOf('-d') > 1)
+    debug = true;
+
+  if (process.argv.indexOf('-c') > 1)
+    configFile = process.argv[process.argv.indexOf('-c') + 1];
+}
+
+/*
+* readConfig - get the list of services to be checked from an external JSON configuration file.
+*/
+function readConfig() {
+  if (debug)
+    console.log(`Reading configuration from ${configFile}`);
+  try {
+    config = JSON.parse(fs.readFileSync(configFile));
+  }
+  catch (error) {
+    console.error(`${error}.\nUsing config-default.json instead.`);
+    config = JSON.parse(fs.readFileSync('config-default.json'));
+  }
+  if (debug) console.log(`Read the following configuration:\n${JSON.stringify(config, null, 2)}`);
+
+  // Provide default values for the mundane details.
+  if (!config.statusMsg) {
+    config.statusMsg = {
+      'success': 'ON',
+      'failure': 'OFF'
+    };
+    if (debug) console.log(`After adding configuration defaults:\n${JSON.stringify(config, null, 2)}`);
+  }
+}
+
+
 function publishStatus(serviceName, status) {
-  if (debug) console.log(`Publishing to server: ${mqttServer.url}, topic: ${mqttServer.topicRoot}/${serviceName}, message: ${status}`);
-  let mqttClient = mqtt.connect(mqttServer.url, { username: mqttServer.username, password: mqttServer.password });
+  if (debug) console.log(`Publishing to server: ${config.mqttConnect.url}, topic: ${config.mqttConnect.topicRoot}/${serviceName}, message: ${status}`);
+  let mqttClient = mqtt.connect(config.mqttConnect.url, { username: config.mqttConnect.username, password: config.mqttConnect.password });
   mqttClient.on('connect', () => {
-    mqttClient.publish(`${mqttServer.topicRoot}/${serviceName}`, status);
+    mqttClient.publish(`${config.mqttConnect.topicRoot}/${serviceName}`, status);
     mqttClient.end();
   });
   mqttClient.on('error', (err) => {
-    console.log(`Error connecting to ${mqttServer.url}:\n${err}`);
+    console.log(`Error connecting to ${config.mqttConnect.url}:\n${err}`);
   });
 }
 
-services.forEach((serviceCheck) => {
+readCommandLine();
+readConfig();
+
+config.services.forEach((serviceCheck) => {
 
   // Specific test for DNS resolution. Tries to resolve host using the local machine's DNS config.
   if (String(serviceCheck.protocol).includes('dns')) {
     dns.resolve(serviceCheck.host, 'A', (err, addresses) => {
+      if (debug)
+        console.log(`DNS check for '${serviceCheck.host}' returned: ${addresses}`);
       if (!err)
-        publishStatus(serviceCheck.name, statusMsg.success);
+        publishStatus(serviceCheck.name, config.statusMsg.success);
       else
-        publishStatus(serviceCheck.name, statusMsg.failure);
+        publishStatus(serviceCheck.name, config.statusMsg.failure);
     });
   }
 
@@ -61,14 +84,16 @@ services.forEach((serviceCheck) => {
   else if (serviceCheck.protocol == 'http') {
     if (!serviceCheck.port) serviceCheck.port = 80;
     if (!serviceCheck.resource) serviceCheck.resource = '/';
-    const httpRequest = http.get(`http://${serviceCheck.host}:${serviceCheck.port}${serviceCheck.resource}`, (result) => {
-      if (result.statusCode < 400)
-        publishStatus(serviceCheck.name, statusMsg.success);
+    const httpRequest = http.get(`http://${serviceCheck.host}:${serviceCheck.port}${serviceCheck.resource}`, (response) => {
+      if (debug)
+        console.log(`HTTP check for http://${serviceCheck.host}:${serviceCheck.port}${serviceCheck.resource} returned: ${response.statusCode}`);
+      if (response.statusCode < 400)
+        publishStatus(serviceCheck.name, config.statusMsg.success);
       else
-        publishStatus(serviceCheck.name, statusMsg.failure);
+        publishStatus(serviceCheck.name, config.statusMsg.failure);
     });
     httpRequest.on('error', (err) => {
-      publishStatus(serviceCheck.name, statusMsg.failure);
+      publishStatus(serviceCheck.name, config.statusMsg.failure);
     });
   }
 
@@ -76,14 +101,16 @@ services.forEach((serviceCheck) => {
   else if (serviceCheck.protocol == 'https') {
     if (!serviceCheck.port) serviceCheck.port = 443;
     if (!serviceCheck.resource) serviceCheck.resource = '/';
-    const httpsRequest = https.get(`https://${serviceCheck.host}:${serviceCheck.port}${serviceCheck.resource}`, (result) => {
-      if (result.statusCode < 400)
-        publishStatus(serviceCheck.name, statusMsg.success);
+    const httpsRequest = https.get(`https://${serviceCheck.host}:${serviceCheck.port}${serviceCheck.resource}`, (response) => {
+      if (debug)
+        console.log(`HTTP check for http://${serviceCheck.host}:${serviceCheck.port}${serviceCheck.resource} returned: ${response.statusCode}`);
+      if (response.statusCode < 400)
+        publishStatus(serviceCheck.name, config.statusMsg.success);
       else
-        publishStatus(serviceCheck.name, statusMsg.failure);
+        publishStatus(serviceCheck.name, config.statusMsg.failure);
     });
     httpsRequest.on('error', (err) => {
-      publishStatus(serviceCheck.name, statusMsg.failure);
+      publishStatus(serviceCheck.name, config.statusMsg.failure);
     });
   }
 
@@ -92,14 +119,14 @@ services.forEach((serviceCheck) => {
     const tcpSocket = new net.Socket();
     tcpSocket.setTimeout(timeout);
     tcpSocket.on('connect', () => {
-      publishStatus(serviceCheck.name, statusMsg.success);
+      publishStatus(serviceCheck.name, config.statusMsg.success);
       tcpSocket.destroy();
     });
     tcpSocket.on('timeout', (err) => {
-      publishStatus(serviceCheck.name, statusMsg.failure);
+      publishStatus(serviceCheck.name, config.statusMsg.failure);
     });
     tcpSocket.on('error', (err) => {
-      publishStatus(serviceCheck.name, statusMsg.failure);
+      publishStatus(serviceCheck.name, config.statusMsg.failure);
     });
     tcpSocket.connect(serviceCheck.port, serviceCheck.host);
   }
