@@ -7,7 +7,7 @@ MQTT Service Check checks the availability of network services and publishes its
 
 ## Why would anybody do that?
 
-The goal of MQTT Service Check is to allow basic monitoring of home network services through a standard integration with a home automation system like Home Assistant. There are other programs that do this already. I was happily using Statping for a while. I create this for better integration with Home Assistant.
+The goal of MQTT Service Check is to allow basic monitoring of home network services through a standard integration with a home automation system like Home Assistant. There are other programs that do this already. I was happily using Statping for a while. I created this for better integration with Home Assistant.
 
 ## How does it work?
 
@@ -18,3 +18,6 @@ The simplest scenario is to create a dashboard that shows the status of various 
 ## Show me an example, already.
 
 The default configuration, config-default.json, is set up to monitor SSH, Web, and DNS services on the localhost. It also connects to the MQTT server on localhost with the supplied credentials. You'll probably need to change the credential, but the service checks should work as-is.
+
+## Next Steps
+I need to add looping capability. Currently the only way to get the service check to run periodically is to use Linux Cron or some other external program to schedule the check. It should be easy to use a JavaScript setInterval() function instead. 
