@@ -7,7 +7,7 @@ MQTT Service Check checks the availability of network services and publishes its
 
 ## Why would anybody do that?
 
-The goal of MQTT Service Check is to allow basic monitoring of home network services through a standard integration with a home automation system like Home Assistant.
+The goal of MQTT Service Check is to allow basic monitoring of home network services through a standard integration with a home automation system like Home Assistant. There are other programs that do this already. I was happily using Statping for a while. I create this for better integration with Home Assistant.
 
 ## How does it work?
 
