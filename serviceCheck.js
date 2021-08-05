@@ -1,5 +1,9 @@
 #!/usr/bin/env node
 
+/**
+ * Periodic status check of network services with results published to an MQTT server.
+ * @author David Horton - https://github.com/DavesCodeMusings/
+ */
 const fs = require('fs');
 const net = require('net');
 const dns = require('dns');
@@ -12,9 +16,9 @@ var configFile = 'config.json';
 var config = { };
 const timeout = 2500;
 
-/*
-* readCommandLine - process parameters passed when starting the program.
-*/
+/**
+ * Process parameters passed when starting the program.
+ */
 function readCommandLine() {
   // argv[0] is 'node'. argv[1] is the name of this program. argv[2] is the start of options.
   if (process.argv.indexOf('-d') > 1)
@@ -24,9 +28,9 @@ function readCommandLine() {
     configFile = process.argv[process.argv.indexOf('-c') + 1];
 }
 
-/*
-* readConfig - get the list of services to be checked from an external JSON configuration file.
-*/
+/**
+ * Get the list of services to be checked from an external JSON configuration file.
+ */
 function readConfig() {
   if (debug)
     console.log(`Reading configuration from ${configFile}`);
@@ -49,7 +53,12 @@ function readConfig() {
   }
 }
 
-
+/**
+ * Send a message about a service status to an MQTT topic.
+ *
+ * @param {string} serviceName  Part of the MQTT topic indicating the service being reported.
+ * @param {string} status       The MQTT message descibing the state of the service.
+ */
 function publishStatus(serviceName, status) {
   if (debug) console.log(`Publishing to server: ${config.mqttConnect.url}, topic: ${config.mqttConnect.topicRoot}/${serviceName}, message: ${status}`);
   let mqttClient = mqtt.connect(config.mqttConnect.url, { username: config.mqttConnect.username, password: config.mqttConnect.password });
@@ -62,6 +71,11 @@ function publishStatus(serviceName, status) {
   });
 }
 
+/**
+ * Perform a DNS lookup and report the result.
+ * @param {string} name  A friendly name given to the service check. Used when reporting to MQTT.
+ * @param {string} host  The hostname to lookup (or IP address for checking reverse lookups.)
+ */
 function dnsCheck(name, host) {
   dns.resolve(host, 'A', (err, addresses) => {
     if (debug)
@@ -73,6 +87,13 @@ function dnsCheck(name, host) {
   });
 }
 
+/**
+ * Connect to an HTTP server and report the result.
+ * @param {string} name      A friendly name given to the service check.
+ * @param {string} host      The server's hostname or IP address.
+ * @param {number} port      The TCP port number the server listens on.
+ * @param {string} resource  The directory and file name portion of the URL (e.g. /index.html)
+ */
 function httpCheck(name, host, port, resource) {
     const httpRequest = http.get(`http://${host}:${port}${resource}`, (response) => {
       if (debug)
@@ -85,9 +106,15 @@ function httpCheck(name, host, port, resource) {
     httpRequest.on('error', (err) => {
       publishStatus(name, config.statusMsg.failure);
     });
-
 }
 
+/**
+ * Connect to an SSL enabled HTTP server and report the result.
+ * @param {string} name      A friendly name given to the service check.
+ * @param {string} host      The server's hostname or IP address.
+ * @param {number} port      The TCP port number the server listens on.
+ * @param {string} resource  The directory and file name portion of the URL (e.g. /index.html)
+ */
 function httpsCheck(name, host, port, resource) {
   const httpsRequest = https.get(`https://${host}:${port}${resource}`, (response) => {
     if (debug)
@@ -102,13 +129,19 @@ function httpsCheck(name, host, port, resource) {
   });
 }
 
+/**
+ * Connect to a generic TCP port and report if the attempt was successful.
+ * @param {string} name      A friendly name given to the service check.
+ * @param {string} host      The server's hostname or IP address.
+ * @param {number} port      The TCP port number the server listens on.
+*/
 function tcpCheck(name, host, port) {
   const tcpSocket = new net.Socket();
   tcpSocket.setTimeout(timeout);
   tcpSocket.on('connect', () => {
     tcpSocket.destroy();
     if (debug)
-      console.log(`TCP check for ${host}:${port} connected.`);
+      console.log(`TCP check for ${host}:${port} connected successfully.`);
     publishStatus(name, config.statusMsg.success);
   });
   tcpSocket.on('timeout', (err) => {
@@ -128,10 +161,12 @@ readCommandLine();
 readConfig();
 
 config.services.forEach((serviceCheck) => {
+  if (!serviceCheck.interval) serviceCheck.interval = 300;  // in seconds
 
   // Specific test for DNS resolution. Tries to resolve host using the local machine's DNS config.
   if (String(serviceCheck.protocol).includes('dns')) {
-    dnsCheck(serviceCheck.name, serviceCheck.host);
+    console.log(`Scheduling DNS check for ${serviceCheck.host} every ${serviceCheck.interval} seconds.`);
+    setInterval(dnsCheck, serviceCheck.interval * 1000, serviceCheck.name, serviceCheck.host);
   }
 
   // Unencrypted web site. Tries to connect to http://host:port/resource and reports OK on status below 400.
@@ -139,18 +174,21 @@ config.services.forEach((serviceCheck) => {
   else if (serviceCheck.protocol == 'http') {
     if (!serviceCheck.port) serviceCheck.port = 80;
     if (!serviceCheck.resource) serviceCheck.resource = '/';
-    httpCheck(serviceCheck.name, serviceCheck.host, serviceCheck.port, serviceCheck.resource);
+    console.log(`Scheduling HTTP check for ${serviceCheck.host}:${serviceCheck.port}${serviceCheck.resource} every ${serviceCheck.interval} seconds.`);
+    setInterval(httpCheck, serviceCheck.interval * 1000, serviceCheck.name, serviceCheck.host, serviceCheck.port, serviceCheck.resource);
   }
 
   // Encrypted web site. Similar to unencrypted, except... wait for it... encrypted.
   else if (serviceCheck.protocol == 'https') {
     if (!serviceCheck.port) serviceCheck.port = 443;
     if (!serviceCheck.resource) serviceCheck.resource = '/';
-    httpsCheck(serviceCheck.name, serviceCheck.host, serviceCheck.port, serviceCheck.resource);
+    console.log(`Scheduling HTTPS check for ${serviceCheck.host}:${serviceCheck.port}${serviceCheck.resource} every ${serviceCheck.interval} seconds.`);
+    setInterval(httpsCheck, serviceCheck.interval * 1000, serviceCheck.name, serviceCheck.host, serviceCheck.port, serviceCheck.resource);
   }
 
   // Generic TCP check. Tries to make a connection and reports the result.
   else if (String(serviceCheck.protocol).includes('tcp')) {
-    tcpCheck(serviceCheck.name, serviceCheck.host, serviceCheck.port);
+    console.log(`Scheduling TCP check for ${serviceCheck.host}:${serviceCheck.port} every ${serviceCheck.interval} seconds.`);
+    setInterval(tcpCheck, serviceCheck.interval * 1000, serviceCheck.name, serviceCheck.host, serviceCheck.port);
   }
 });
