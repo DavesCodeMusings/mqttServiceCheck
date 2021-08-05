@@ -89,15 +89,15 @@ function dnsCheck(name, host) {
 
 /**
  * Connect to an HTTP server and report the result.
- * @param {string} name      A friendly name given to the service check.
- * @param {string} host      The server's hostname or IP address.
- * @param {number} port      The TCP port number the server listens on.
- * @param {string} resource  The directory and file name portion of the URL (e.g. /index.html)
+ * @param {string} name  A friendly name given to the service check.
+ * @param {string} host  The server's hostname or IP address.
+ * @param {number} port  The TCP port number the server listens on.
+ * @param {string} path  The directory and file name portion of the URL (e.g. /index.html)
  */
-function httpCheck(name, host, port, resource) {
-    const httpRequest = http.get(`http://${host}:${port}${resource}`, (response) => {
+function httpCheck(name, host, port, path) {
+    const httpRequest = http.get(`http://${host}:${port}${path}`, (response) => {
       if (debug)
-        console.log(`HTTP check for http://${host}:${port}${resource} returned: ${response.statusCode}`);
+        console.log(`HTTP check for http://${host}:${port}${path} returned: ${response.statusCode}`);
       if (response.statusCode < 400)
         publishStatus(name, config.statusMsg.success);
       else
@@ -110,15 +110,15 @@ function httpCheck(name, host, port, resource) {
 
 /**
  * Connect to an SSL enabled HTTP server and report the result.
- * @param {string} name      A friendly name given to the service check.
- * @param {string} host      The server's hostname or IP address.
- * @param {number} port      The TCP port number the server listens on.
- * @param {string} resource  The directory and file name portion of the URL (e.g. /index.html)
+ * @param {string} name  A friendly name given to the service check.
+ * @param {string} host  The server's hostname or IP address.
+ * @param {number} port  The TCP port number the server listens on.
+ * @param {string} path  The directory and file name portion of the URL (e.g. /index.html)
  */
-function httpsCheck(name, host, port, resource) {
-  const httpsRequest = https.get(`https://${host}:${port}${resource}`, (response) => {
+function httpsCheck(name, host, port, path) {
+  const httpsRequest = https.get(`https://${host}:${port}${path}`, (response) => {
     if (debug)
-      console.log(`HTTPS check for http://${host}:${port}${resource} returned: ${response.statusCode}`);
+      console.log(`HTTPS check for http://${host}:${port}${path} returned: ${response.statusCode}`);
     if (response.statusCode < 400)
       publishStatus(name, config.statusMsg.success);
     else
@@ -165,30 +165,30 @@ config.services.forEach((serviceCheck) => {
 
   // Specific test for DNS resolution. Tries to resolve host using the local machine's DNS config.
   if (String(serviceCheck.protocol).includes('dns')) {
-    console.log(`Scheduling DNS check for ${serviceCheck.host} every ${serviceCheck.interval} seconds.`);
+    console.log(`Scheduling DNS check for ${serviceCheck.host} every ${serviceCheck.interval} seconds as MQTT topic ${config.mqttConnect.topicRoot}/${serviceCheck.name}.`);
     setInterval(dnsCheck, serviceCheck.interval * 1000, serviceCheck.name, serviceCheck.host);
   }
 
-  // Unencrypted web site. Tries to connect to http://host:port/resource and reports OK on status below 400.
+  // Unencrypted web site. Tries to connect to http://host:port/path and reports OK on status below 400.
   // See https://en.wikipedia.org/wiki/List_of_HTTP_status_codes for more about HTTP status codes.
   else if (serviceCheck.protocol == 'http') {
     if (!serviceCheck.port) serviceCheck.port = 80;
-    if (!serviceCheck.resource) serviceCheck.resource = '/';
-    console.log(`Scheduling HTTP check for ${serviceCheck.host}:${serviceCheck.port}${serviceCheck.resource} every ${serviceCheck.interval} seconds.`);
-    setInterval(httpCheck, serviceCheck.interval * 1000, serviceCheck.name, serviceCheck.host, serviceCheck.port, serviceCheck.resource);
+    if (!serviceCheck.path) serviceCheck.path = '/';
+    console.log(`Scheduling HTTP check for ${serviceCheck.host}:${serviceCheck.port}${serviceCheck.path} every ${serviceCheck.interval} seconds as MQTT topic ${config.mqttConnect.topicRoot}/${serviceCheck.name}.`);
+    setInterval(httpCheck, serviceCheck.interval * 1000, serviceCheck.name, serviceCheck.host, serviceCheck.port, serviceCheck.path);
   }
 
   // Encrypted web site. Similar to unencrypted, except... wait for it... encrypted.
   else if (serviceCheck.protocol == 'https') {
     if (!serviceCheck.port) serviceCheck.port = 443;
-    if (!serviceCheck.resource) serviceCheck.resource = '/';
-    console.log(`Scheduling HTTPS check for ${serviceCheck.host}:${serviceCheck.port}${serviceCheck.resource} every ${serviceCheck.interval} seconds.`);
-    setInterval(httpsCheck, serviceCheck.interval * 1000, serviceCheck.name, serviceCheck.host, serviceCheck.port, serviceCheck.resource);
+    if (!serviceCheck.path) serviceCheck.path = '/';
+    console.log(`Scheduling HTTPS check for ${serviceCheck.host}:${serviceCheck.port}${serviceCheck.path} every ${serviceCheck.interval} seconds as MQTT topic ${config.mqttConnect.topicRoot}/${serviceCheck.name}.`);
+    setInterval(httpsCheck, serviceCheck.interval * 1000, serviceCheck.name, serviceCheck.host, serviceCheck.port, serviceCheck.path);
   }
 
   // Generic TCP check. Tries to make a connection and reports the result.
   else if (String(serviceCheck.protocol).includes('tcp')) {
-    console.log(`Scheduling TCP check for ${serviceCheck.host}:${serviceCheck.port} every ${serviceCheck.interval} seconds.`);
+    console.log(`Scheduling TCP check for ${serviceCheck.host}:${serviceCheck.port} every ${serviceCheck.interval} seconds as MQTT topic ${config.mqttConnect.topicRoot}/${serviceCheck.name}.`);
     setInterval(tcpCheck, serviceCheck.interval * 1000, serviceCheck.name, serviceCheck.host, serviceCheck.port);
   }
 });
