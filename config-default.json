@@ -8,20 +8,30 @@
 
   "services": [
     {
-      "name": "SSH",
+      "name": "Local SSH",
+      "interval": 600,
       "host": "127.0.0.1",
       "protocol": "tcp",
       "port": 22
     },
     {
-      "name": "Web",
+      "name": "Intranet",
+      "interval": 60,
       "host": "127.0.0.1",
       "protocol": "http"
     },
     {
-      "name": "DNS",
+      "name": "DNS Lookup",
+      "interval": 60,
       "host": "localhost",
       "protocol": "dns"
+    },
+    {
+      "name": "Public Web Site",
+      "interval": 600,
+      "host": "duckduckgo.com",
+      "path": "/index.html",
+      "protocol": "https"
     }
   ]
 }
