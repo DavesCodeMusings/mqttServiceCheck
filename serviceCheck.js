@@ -5,7 +5,7 @@ const net = require('net');
 const dns = require('dns');
 const http = require('http');
 const https = require('https');
-const mqtt = require('mqtt');
+const mqtt = require('mqtt');  // This one comes from NPM. Install with the command 'npm -i mqtt'.
 
 var debug = false;
 var configFile = 'config.json';
@@ -62,6 +62,68 @@ function publishStatus(serviceName, status) {
   });
 }
 
+function dnsCheck(name, host) {
+  dns.resolve(host, 'A', (err, addresses) => {
+    if (debug)
+      console.log(`DNS check for '${host}' returned: ${addresses}`);
+    if (!err)
+      publishStatus(name, config.statusMsg.success);
+    else
+      publishStatus(name, config.statusMsg.failure);
+  });
+}
+
+function httpCheck(name, host, port, resource) {
+    const httpRequest = http.get(`http://${host}:${port}${resource}`, (response) => {
+      if (debug)
+        console.log(`HTTP check for http://${host}:${port}${resource} returned: ${response.statusCode}`);
+      if (response.statusCode < 400)
+        publishStatus(name, config.statusMsg.success);
+      else
+        publishStatus(name, config.statusMsg.failure);
+    });
+    httpRequest.on('error', (err) => {
+      publishStatus(name, config.statusMsg.failure);
+    });
+
+}
+
+function httpsCheck(name, host, port, resource) {
+  const httpsRequest = https.get(`https://${host}:${port}${resource}`, (response) => {
+    if (debug)
+      console.log(`HTTPS check for http://${host}:${port}${resource} returned: ${response.statusCode}`);
+    if (response.statusCode < 400)
+      publishStatus(name, config.statusMsg.success);
+    else
+      publishStatus(name, config.statusMsg.failure);
+  });
+  httpsRequest.on('error', (err) => {
+    publishStatus(name, config.statusMsg.failure);
+  });
+}
+
+function tcpCheck(name, host, port) {
+  const tcpSocket = new net.Socket();
+  tcpSocket.setTimeout(timeout);
+  tcpSocket.on('connect', () => {
+    tcpSocket.destroy();
+    if (debug)
+      console.log(`TCP check for ${host}:${port} connected.`);
+    publishStatus(name, config.statusMsg.success);
+  });
+  tcpSocket.on('timeout', (err) => {
+    if (debug)
+      console.log(`TCP check for ${host}:${port} timed out.`);
+    publishStatus(name, config.statusMsg.failure);
+  });
+  tcpSocket.on('error', (err) => {
+    if (debug)
+      console.log(`TCP check for ${host}:${port} could not connect.`);
+    publishStatus(name, config.statusMsg.failure);
+  });
+  tcpSocket.connect(port, host);
+}
+
 readCommandLine();
 readConfig();
 
@@ -69,14 +131,7 @@ config.services.forEach((serviceCheck) => {
 
   // Specific test for DNS resolution. Tries to resolve host using the local machine's DNS config.
   if (String(serviceCheck.protocol).includes('dns')) {
-    dns.resolve(serviceCheck.host, 'A', (err, addresses) => {
-      if (debug)
-        console.log(`DNS check for '${serviceCheck.host}' returned: ${addresses}`);
-      if (!err)
-        publishStatus(serviceCheck.name, config.statusMsg.success);
-      else
-        publishStatus(serviceCheck.name, config.statusMsg.failure);
-    });
+    dnsCheck(serviceCheck.name, serviceCheck.host);
   }
 
   // Unencrypted web site. Tries to connect to http://host:port/resource and reports OK on status below 400.
@@ -84,50 +139,18 @@ config.services.forEach((serviceCheck) => {
   else if (serviceCheck.protocol == 'http') {
     if (!serviceCheck.port) serviceCheck.port = 80;
     if (!serviceCheck.resource) serviceCheck.resource = '/';
-    const httpRequest = http.get(`http://${serviceCheck.host}:${serviceCheck.port}${serviceCheck.resource}`, (response) => {
-      if (debug)
-        console.log(`HTTP check for http://${serviceCheck.host}:${serviceCheck.port}${serviceCheck.resource} returned: ${response.statusCode}`);
-      if (response.statusCode < 400)
-        publishStatus(serviceCheck.name, config.statusMsg.success);
-      else
-        publishStatus(serviceCheck.name, config.statusMsg.failure);
-    });
-    httpRequest.on('error', (err) => {
-      publishStatus(serviceCheck.name, config.statusMsg.failure);
-    });
+    httpCheck(serviceCheck.name, serviceCheck.host, serviceCheck.port, serviceCheck.resource);
   }
 
   // Encrypted web site. Similar to unencrypted, except... wait for it... encrypted.
   else if (serviceCheck.protocol == 'https') {
     if (!serviceCheck.port) serviceCheck.port = 443;
     if (!serviceCheck.resource) serviceCheck.resource = '/';
-    const httpsRequest = https.get(`https://${serviceCheck.host}:${serviceCheck.port}${serviceCheck.resource}`, (response) => {
-      if (debug)
-        console.log(`HTTP check for http://${serviceCheck.host}:${serviceCheck.port}${serviceCheck.resource} returned: ${response.statusCode}`);
-      if (response.statusCode < 400)
-        publishStatus(serviceCheck.name, config.statusMsg.success);
-      else
-        publishStatus(serviceCheck.name, config.statusMsg.failure);
-    });
-    httpsRequest.on('error', (err) => {
-      publishStatus(serviceCheck.name, config.statusMsg.failure);
-    });
+    httpsCheck(serviceCheck.name, serviceCheck.host, serviceCheck.port, serviceCheck.resource);
   }
 
   // Generic TCP check. Tries to make a connection and reports the result.
   else if (String(serviceCheck.protocol).includes('tcp')) {
-    const tcpSocket = new net.Socket();
-    tcpSocket.setTimeout(timeout);
-    tcpSocket.on('connect', () => {
-      publishStatus(serviceCheck.name, config.statusMsg.success);
-      tcpSocket.destroy();
-    });
-    tcpSocket.on('timeout', (err) => {
-      publishStatus(serviceCheck.name, config.statusMsg.failure);
-    });
-    tcpSocket.on('error', (err) => {
-      publishStatus(serviceCheck.name, config.statusMsg.failure);
-    });
-    tcpSocket.connect(serviceCheck.port, serviceCheck.host);
+    tcpCheck(serviceCheck.name, serviceCheck.host, serviceCheck.port);
   }
 });
