@@ -95,17 +95,24 @@ function dnsCheck(name, host) {
  * @param {string} path  The directory and file name portion of the URL (e.g. /index.html)
  */
 function httpCheck(name, host, port, path) {
-    const httpRequest = http.get(`http://${host}:${port}${path}`, (response) => {
-      if (debug)
-        console.log(`HTTP check for http://${host}:${port}${path} returned: ${response.statusCode}`);
-      if (response.statusCode < 400)
-        publishStatus(name, config.statusMsg.success);
-      else
-        publishStatus(name, config.statusMsg.failure);
-    });
-    httpRequest.on('error', (err) => {
+  const httpRequest = http.get(`http://${host}:${port}${path}`, (response) => {
+    if (debug)
+      console.log(`HTTP check for http://${host}:${port}${path} returned: ${response.statusCode}`);
+    if (response.statusCode < 400)
+      publishStatus(name, config.statusMsg.success);
+    else
       publishStatus(name, config.statusMsg.failure);
-    });
+  });
+  httpRequest.on('data', (chunk) => {
+    let data = chunk;  // Read and throw away.
+  });
+  httpRequest.on('close', () => {
+    httpRequest.end();
+  });
+  httpRequest.on('error', (err) => {
+    publishStatus(name, config.statusMsg.failure);
+    httpRequest.end();
+  });
 }
 
 /**
@@ -124,8 +131,15 @@ function httpsCheck(name, host, port, path) {
     else
       publishStatus(name, config.statusMsg.failure);
   });
+  httpsRequest.on('data', (chunk) => {
+    let data = chunk;  // Read and throw away.
+  });
+  httpsRequest.on('close', () => {
+    httpsRequest.end();
+  });
   httpsRequest.on('error', (err) => {
     publishStatus(name, config.statusMsg.failure);
+    httpsRequest.end();
   });
 }
 
