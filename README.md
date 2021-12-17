@@ -1,4 +1,4 @@
-# mqttServiceMonitor
+# mqttServiceCheck
 Publish network service status to MQTT for monitoring by home automation software.
 
 ## What is it?
