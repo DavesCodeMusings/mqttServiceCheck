@@ -1,0 +1,18 @@
+# Adjust ExecStart and WorkingDirectory parameters
+[Unit]
+Description=Service Check
+# Because Mosquitto MQTT is running as a container...
+Requires=docker.service
+After=docker.service
+
+[Service]
+ExecStart=/usr/bin/node /home/pi/js/service-check/serviceCheck.js
+WorkingDirectory=/home/pi/js/service-check
+Restart=always
+RestartSec=10
+SyslogIdentifier=ServiceCheck
+User=pi
+Group=pi
+
+[Install]
+WantedBy=multi-user.target
