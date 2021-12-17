@@ -37,3 +37,4 @@ To shut it down:
 1. Find the process ID using `ps -eo pid,cmd | grep serviceCheck.js  | grep -v grep`
 2. Kill the process using `kill PID`; where PID is the process ID returned in the previous step.
 
+To run whenever the system boots, use the systemd service file in the systemd directory.
