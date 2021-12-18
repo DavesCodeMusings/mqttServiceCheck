@@ -17,7 +17,7 @@ var config = { };
 const timeout = 2500;
 
 /**
- * Process parameters passed when starting the program.
+ * Process command-line parameters for debugging and alternate config file options.
  */
 function readCommandLine() {
   // argv[0] is 'node'. argv[1] is the name of this program. argv[2] is the start of options.
@@ -44,8 +44,8 @@ function readConfig() {
   if (debug) console.log(`Read the following configuration:\n${JSON.stringify(config, null, 2)}`);
 
   // Provide default values for the mundane details.
-  if (!config.statusMsg) {
-    config.statusMsg = {
+  if (!config.payload) {
+    config.payload = {
       'success': 'ON',
       'failure': 'OFF'
     };
@@ -54,16 +54,39 @@ function readConfig() {
 }
 
 /**
- * Send a message about a service status to an MQTT topic.
- *
- * @param {string} serviceName  Part of the MQTT topic indicating the service being reported.
- * @param {string} status       The MQTT message descibing the state of the service.
+ * Send mmessages to Home Assistant's auto-discovery topic.
  */
-function publishStatus(serviceName, status) {
-  if (debug) console.log(`Publishing to server: ${config.mqttConnect.url}, topic: ${config.mqttConnect.topicRoot}/${serviceName}, message: ${status}`);
+function publishDiscovery() {
   let mqttClient = mqtt.connect(config.mqttConnect.url, { username: config.mqttConnect.username, password: config.mqttConnect.password });
   mqttClient.on('connect', () => {
-    mqttClient.publish(`${config.mqttConnect.topicRoot}/${serviceName}`, status);
+    config.services.forEach((serviceCheck) => {
+      let discoveryTopic = `${config.mqttConnect.discoveryPrefix}/${config.mqttConnect.statePrefix}/${serviceCheck.name}/config`;
+      let discoveryPayload = {
+        "name": serviceCheck.name,
+        "device_class": "running",
+        "state_topic": `${config.mqttConnect.statePrefix}/${serviceCheck.name}`
+      };
+      if (debug) console.log(`Publishing discovery topic: ${discoveryTopic}\n${JSON.stringify(discoveryPayload, null, 2)}`);
+      mqttClient.publish(discoveryTopic, JSON.stringify(discoveryPayload), { retain: true });
+    });
+    mqttClient.end();
+  });
+  mqttClient.on('error', (err) => {
+    console.log(`Error connecting to ${config.mqttConnect.url}:\n${err}`);
+  });
+}
+
+/**
+ * Send a message about a service state to an MQTT topic.
+ *
+ * @param {string} serviceName  Part of the MQTT topic indicating the service being reported.
+ * @param {string} state       The MQTT message descibing the state of the service.
+ */
+function publishState(serviceName, state) {
+  if (debug) console.log(`Publishing to server: ${config.mqttConnect.url}, topic: ${config.mqttConnect.statePrefix}/${serviceName}, message: ${state}`);
+  let mqttClient = mqtt.connect(config.mqttConnect.url, { username: config.mqttConnect.username, password: config.mqttConnect.password });
+  mqttClient.on('connect', () => {
+    mqttClient.publish(`${config.mqttConnect.statePrefix}/${serviceName}`, state);
     mqttClient.end();
   });
   mqttClient.on('error', (err) => {
@@ -81,9 +104,9 @@ function dnsCheck(name, host) {
     if (debug)
       console.log(`DNS check for '${host}' returned: ${addresses}`);
     if (!err)
-      publishStatus(name, config.statusMsg.success);
+      publishState(name, config.payload.success);
     else
-      publishStatus(name, config.statusMsg.failure);
+      publishState(name, config.payload.failure);
   });
 }
 
@@ -99,9 +122,9 @@ function httpCheck(name, host, port, path) {
     if (debug)
       console.log(`HTTP check for http://${host}:${port}${path} returned: ${response.statusCode}`);
     if (response.statusCode < 400)
-      publishStatus(name, config.statusMsg.success);
+      publishState(name, config.payload.success);
     else
-      publishStatus(name, config.statusMsg.failure);
+      publishState(name, config.payload.failure);
   });
   httpRequest.on('data', (chunk) => {
     let data = chunk;  // Read and throw away.
@@ -110,7 +133,7 @@ function httpCheck(name, host, port, path) {
     httpRequest.end();
   });
   httpRequest.on('error', (err) => {
-    publishStatus(name, config.statusMsg.failure);
+    publishState(name, config.payload.failure);
     httpRequest.end();
   });
 }
@@ -127,9 +150,9 @@ function httpsCheck(name, host, port, path) {
     if (debug)
       console.log(`HTTPS check for http://${host}:${port}${path} returned: ${response.statusCode}`);
     if (response.statusCode < 400)
-      publishStatus(name, config.statusMsg.success);
+      publishState(name, config.payload.success);
     else
-      publishStatus(name, config.statusMsg.failure);
+      publishState(name, config.payload.failure);
   });
   httpsRequest.on('data', (chunk) => {
     let data = chunk;  // Read and throw away.
@@ -138,7 +161,7 @@ function httpsCheck(name, host, port, path) {
     httpsRequest.end();
   });
   httpsRequest.on('error', (err) => {
-    publishStatus(name, config.statusMsg.failure);
+    publishState(name, config.payload.failure);
     httpsRequest.end();
   });
 }
@@ -156,30 +179,35 @@ function tcpCheck(name, host, port) {
     tcpSocket.destroy();
     if (debug)
       console.log(`TCP check for ${host}:${port} connected successfully.`);
-    publishStatus(name, config.statusMsg.success);
+    publishState(name, config.payload.success);
   });
   tcpSocket.on('timeout', (err) => {
     if (debug)
       console.log(`TCP check for ${host}:${port} timed out.`);
-    publishStatus(name, config.statusMsg.failure);
+    publishState(name, config.payload.failure);
   });
   tcpSocket.on('error', (err) => {
     if (debug)
       console.log(`TCP check for ${host}:${port} could not connect.`);
-    publishStatus(name, config.statusMsg.failure);
+    publishState(name, config.payload.failure);
   });
   tcpSocket.connect(port, host);
 }
 
 readCommandLine();
 readConfig();
+if (config.mqttConnect.discoveryPrefix) {
+  console.log(`Publishing discovery topics to: ${config.mqttConnect.discoveryPrefix}`);
+  publishDiscovery();
+}
 
+console.log(`Publishing state topics to: ${config.mqttConnect.statePrefix}`);
 config.services.forEach((serviceCheck) => {
   if (!serviceCheck.interval) serviceCheck.interval = 300;  // in seconds
 
   // Specific test for DNS resolution. Tries to resolve host using the local machine's DNS config.
   if (String(serviceCheck.protocol).includes('dns')) {
-    console.log(`Scheduling DNS check for ${serviceCheck.host} every ${serviceCheck.interval} seconds as MQTT topic ${config.mqttConnect.topicRoot}/${serviceCheck.name}.`);
+    console.log(`Scheduling DNS check for ${serviceCheck.host} every ${serviceCheck.interval} seconds as MQTT topic ${config.mqttConnect.statePrefix}/${serviceCheck.name}.`);
     setInterval(dnsCheck, serviceCheck.interval * 1000, serviceCheck.name, serviceCheck.host);
   }
 
@@ -188,7 +216,7 @@ config.services.forEach((serviceCheck) => {
   else if (serviceCheck.protocol == 'http') {
     if (!serviceCheck.port) serviceCheck.port = 80;
     if (!serviceCheck.path) serviceCheck.path = '/';
-    console.log(`Scheduling HTTP check for ${serviceCheck.host}:${serviceCheck.port}${serviceCheck.path} every ${serviceCheck.interval} seconds as MQTT topic ${config.mqttConnect.topicRoot}/${serviceCheck.name}.`);
+    console.log(`Scheduling HTTP check for ${serviceCheck.host}:${serviceCheck.port}${serviceCheck.path} every ${serviceCheck.interval} seconds as MQTT topic ${config.mqttConnect.statePrefix}/${serviceCheck.name}.`);
     setInterval(httpCheck, serviceCheck.interval * 1000, serviceCheck.name, serviceCheck.host, serviceCheck.port, serviceCheck.path);
   }
 
@@ -196,13 +224,13 @@ config.services.forEach((serviceCheck) => {
   else if (serviceCheck.protocol == 'https') {
     if (!serviceCheck.port) serviceCheck.port = 443;
     if (!serviceCheck.path) serviceCheck.path = '/';
-    console.log(`Scheduling HTTPS check for ${serviceCheck.host}:${serviceCheck.port}${serviceCheck.path} every ${serviceCheck.interval} seconds as MQTT topic ${config.mqttConnect.topicRoot}/${serviceCheck.name}.`);
+    console.log(`Scheduling HTTPS check for ${serviceCheck.host}:${serviceCheck.port}${serviceCheck.path} every ${serviceCheck.interval} seconds as MQTT topic ${config.mqttConnect.statePrefix}/${serviceCheck.name}.`);
     setInterval(httpsCheck, serviceCheck.interval * 1000, serviceCheck.name, serviceCheck.host, serviceCheck.port, serviceCheck.path);
   }
 
   // Generic TCP check. Tries to make a connection and reports the result.
   else if (String(serviceCheck.protocol).includes('tcp')) {
-    console.log(`Scheduling TCP check for ${serviceCheck.host}:${serviceCheck.port} every ${serviceCheck.interval} seconds as MQTT topic ${config.mqttConnect.topicRoot}/${serviceCheck.name}.`);
+    console.log(`Scheduling TCP check for ${serviceCheck.host}:${serviceCheck.port} every ${serviceCheck.interval} seconds as MQTT topic ${config.mqttConnect.statePrefix}/${serviceCheck.name}.`);
     setInterval(tcpCheck, serviceCheck.interval * 1000, serviceCheck.name, serviceCheck.host, serviceCheck.port);
   }
 });
