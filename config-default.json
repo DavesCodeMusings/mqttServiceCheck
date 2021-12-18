@@ -3,7 +3,7 @@
     "url": "mqtt://127.0.0.1",
     "username": "mqtt",
     "password": "password",
-    "topicRoot": "Service Check"
+    "statePrefix": "Service Check"
   },
 
   "services": [
