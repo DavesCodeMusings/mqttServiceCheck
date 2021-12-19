@@ -65,7 +65,7 @@ function publishDiscovery() {
       let discoveryTopic = `${config.mqttConnect.discoveryPrefix}/binary_sensor/${config.mqttConnect.statePrefix}/${serviceCheck.name}/config`;
       let discoveryPayload = {
         "name": serviceCheck.name,
-        "device_class": "running",
+        "device_class": "connectivity",
         "state_topic": `${config.mqttConnect.statePrefix}/${serviceCheck.name}`,
         "unique_id": `${shortHostname}_${config.mqttConnect.statePrefix}_${serviceCheck.name}`
       };
