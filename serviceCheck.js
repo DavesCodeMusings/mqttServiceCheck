@@ -5,6 +5,7 @@
  * @author David Horton - https://github.com/DavesCodeMusings/
  */
 const fs = require('fs');
+const os = require('os');
 const net = require('net');
 const dns = require('dns');
 const http = require('http');
@@ -59,12 +60,14 @@ function readConfig() {
 function publishDiscovery() {
   let mqttClient = mqtt.connect(config.mqttConnect.url, { username: config.mqttConnect.username, password: config.mqttConnect.password });
   mqttClient.on('connect', () => {
+    let shortHostname = os.hostname().split('.', 1)[0];
     config.services.forEach((serviceCheck) => {
-      let discoveryTopic = `${config.mqttConnect.discoveryPrefix}/${config.mqttConnect.statePrefix}/${serviceCheck.name}/config`;
+      let discoveryTopic = `${config.mqttConnect.discoveryPrefix}/binary_sensor/${config.mqttConnect.statePrefix}/${serviceCheck.name}/config`;
       let discoveryPayload = {
         "name": serviceCheck.name,
         "device_class": "running",
-        "state_topic": `${config.mqttConnect.statePrefix}/${serviceCheck.name}`
+        "state_topic": `${config.mqttConnect.statePrefix}/${serviceCheck.name}`,
+        "unique_id": `${shortHostname}_${config.mqttConnect.statePrefix}_${serviceCheck.name}`
       };
       if (debug) console.log(`Publishing discovery topic: ${discoveryTopic}\n${JSON.stringify(discoveryPayload, null, 2)}`);
       mqttClient.publish(discoveryTopic, JSON.stringify(discoveryPayload), { retain: true });
